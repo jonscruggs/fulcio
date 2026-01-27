@@ -47,7 +47,11 @@ func PrincipalFromIDToken(ctx context.Context, token *oidc.IDToken) (identity.Pr
 		return nil, fmt.Errorf("uri subject should not be an email address")
 	}
 
-	cfg, ok := config.FromContext(ctx).GetIssuer(token.Issuer)
+	aud := ""
+	if len(token.Audience) > 0 {
+		aud = token.Audience[0]
+	}
+	cfg, ok := config.FromContext(ctx).GetIssuer(token.Issuer, aud)
 	if !ok {
 		return nil, errors.New("invalid configuration for OIDC ID Token issuer")
 	}

@@ -40,7 +40,7 @@ type testIssuer struct {
 	auth  func(context.Context, string) (Principal, error)
 }
 
-func (i testIssuer) Match(ctx context.Context, url string) bool {
+func (i testIssuer) Match(ctx context.Context, url string, federationDomain string) bool {
 	return i.match(ctx, url)
 }
 

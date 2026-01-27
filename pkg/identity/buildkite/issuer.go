@@ -28,8 +28,8 @@ type buildkiteIssuer struct {
 }
 
 // Deprecated: Use ciprovider.Issuer instead
-func Issuer(issuerURL string) identity.Issuer {
-	return &buildkiteIssuer{base.Issuer(issuerURL)}
+func Issuer(issuerURL, clientID string) identity.Issuer {
+	return &buildkiteIssuer{base.Issuer(issuerURL, clientID)}
 }
 
 func (e *buildkiteIssuer) Authenticate(ctx context.Context, token string, opts ...config.InsecureOIDCConfigOption) (identity.Principal, error) {

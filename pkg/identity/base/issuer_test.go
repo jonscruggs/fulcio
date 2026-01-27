@@ -49,8 +49,8 @@ func TestMatch(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
-			base := Issuer(test.issuerURL)
-			matched := base.Match(context.Background(), test.url)
+			base := Issuer(test.issuerURL, "")
+			matched := base.Match(context.Background(), test.url, "")
 			if matched != test.expected {
 				t.Fatalf("expected %v got %v", test.expected, matched)
 			}
@@ -59,7 +59,7 @@ func TestMatch(t *testing.T) {
 }
 
 func TestAuthenticate(t *testing.T) {
-	issuer := Issuer("example.com")
+	issuer := Issuer("example.com", "")
 	if _, err := issuer.Authenticate(context.Background(), "token"); err == nil {
 		t.Fatal("expected error on authenticate, BaseIssuer shouldn't implement Authenticate")
 	}

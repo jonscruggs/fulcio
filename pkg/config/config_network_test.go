@@ -39,7 +39,7 @@ func TestLoadYamlConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, ok := cfg.GetIssuer("https://accounts.google.com")
+	got, ok := cfg.GetIssuer("https://accounts.google.com", "")
 	if !ok {
 		t.Error("expected true, got false")
 	}
@@ -53,7 +53,7 @@ func TestLoadYamlConfig(t *testing.T) {
 		t.Errorf("expected 2 issuers, got %d", got)
 	}
 
-	got, ok = cfg.GetIssuer("https://oidc.eks.fantasy-land.amazonaws.com/id/CLUSTERIDENTIFIER")
+	got, ok = cfg.GetIssuer("https://oidc.eks.fantasy-land.amazonaws.com/id/CLUSTERIDENTIFIER", "")
 	if !ok {
 		t.Error("expected true, got false")
 	}
@@ -65,7 +65,7 @@ func TestLoadYamlConfig(t *testing.T) {
 	}
 
 	// Checking that the ci provider meta issuer has been set correctly
-	got, ok = cfg.GetIssuer("https://oidc.foo.foobar.bar.com/id/CLUSTERIDENTIFIER")
+	got, ok = cfg.GetIssuer("https://oidc.foo.foobar.bar.com/id/CLUSTERIDENTIFIER", "")
 	if !ok {
 		t.Error("expected true, got false")
 	}
@@ -76,7 +76,7 @@ func TestLoadYamlConfig(t *testing.T) {
 		t.Errorf("expected github-workflow, got %s", got.CIProvider)
 	}
 
-	if _, ok := cfg.GetIssuer("not_an_issuer"); ok {
+	if _, ok := cfg.GetIssuer("not_an_issuer", ""); ok {
 		t.Error("no error returned from an unconfigured issuer")
 	}
 }
@@ -92,7 +92,7 @@ func TestLoadJsonConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, ok := cfg.GetIssuer("https://accounts.google.com")
+	got, ok := cfg.GetIssuer("https://accounts.google.com", "")
 	if !ok {
 		t.Error("expected true, got false")
 	}
@@ -106,7 +106,7 @@ func TestLoadJsonConfig(t *testing.T) {
 		t.Errorf("expected 2 issuers, got %d", got)
 	}
 
-	got, ok = cfg.GetIssuer("https://oidc.eks.fantasy-land.amazonaws.com/id/CLUSTERIDENTIFIER")
+	got, ok = cfg.GetIssuer("https://oidc.eks.fantasy-land.amazonaws.com/id/CLUSTERIDENTIFIER", "")
 	if !ok {
 		t.Error("expected true, got false")
 	}
@@ -118,7 +118,7 @@ func TestLoadJsonConfig(t *testing.T) {
 	}
 
 	// Checking that the ci provider meta issuer has been set correctly
-	got, ok = cfg.GetIssuer("https://oidc.foo.foobar.bar.com/id/CLUSTERIDENTIFIER")
+	got, ok = cfg.GetIssuer("https://oidc.foo.foobar.bar.com/id/CLUSTERIDENTIFIER", "")
 	if !ok {
 		t.Error("expected true, got false")
 	}
@@ -129,7 +129,7 @@ func TestLoadJsonConfig(t *testing.T) {
 		t.Errorf("expected github-workflow, got %s", got.CIProvider)
 	}
 
-	if _, ok := cfg.GetIssuer("not_an_issuer"); ok {
+	if _, ok := cfg.GetIssuer("not_an_issuer", ""); ok {
 		t.Error("no error returned from an unconfigured issuer")
 	}
 }

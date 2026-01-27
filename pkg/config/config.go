@@ -162,12 +162,30 @@ func MetaRegex(issuer string) (*regexp.Regexp, error) {
 }
 
 // GetIssuer looks up the issuer configuration for an `issuerURL`
-// coming from an incoming OIDC token.  If no matching configuration
-// is found, then it returns `false`.
-func (fc *FulcioConfig) GetIssuer(issuerURL string) (OIDCIssuer, bool) {
-	iss, ok := fc.OIDCIssuers[issuerURL]
-	if ok {
-		return iss, ok
+// coming from an incoming OIDC token. When multiple issuers share the same
+// IssuerURL, the `audience` parameter (from the token's aud claim) is used
+// to disambiguate by matching against the issuer's ClientID.
+// If no matching configuration is found, then it returns `false`.
+func (fc *FulcioConfig) GetIssuer(issuerURL, audience string) (OIDCIssuer, bool) {
+	// Search OIDCIssuers by IssuerURL field (map key is now a logical name)
+	var candidates []OIDCIssuer
+	for _, iss := range fc.OIDCIssuers {
+		if iss.IssuerURL == issuerURL {
+			candidates = append(candidates, iss)
+		}
+	}
+	if len(candidates) == 1 {
+		return candidates[0], true
+	}
+	if len(candidates) > 1 {
+		// Multiple issuers for the same URL; disambiguate by audience/clientID
+		for _, iss := range candidates {
+			if iss.ClientID == audience {
+				return iss, true
+			}
+		}
+		// No audience match found among candidates
+		return OIDCIssuer{}, false
 	}
 
 	for meta, iss := range fc.MetaIssuers {
@@ -193,11 +211,17 @@ func (fc *FulcioConfig) GetIssuer(issuerURL string) (OIDCIssuer, bool) {
 	return OIDCIssuer{}, false
 }
 
-// GetVerifier fetches a token verifier for the given `issuerURL`
+// verifierKey returns a composite key for the verifiers map, combining
+// issuer URL and client ID to support multiple issuers with the same URL.
+func verifierKey(issuerURL, clientID string) string {
+	return issuerURL + "|" + clientID
+}
+
+// GetVerifier fetches a token verifier for the given `issuerURL` and `audience`
 // coming from an incoming OIDC token.  If no matching configuration
 // is found, then it returns `false`.
-func (fc *FulcioConfig) GetVerifier(issuerURL string, opts ...InsecureOIDCConfigOption) (*oidc.IDTokenVerifier, bool) {
-	iss, ok := fc.GetIssuer(issuerURL)
+func (fc *FulcioConfig) GetVerifier(issuerURL, audience string, opts ...InsecureOIDCConfigOption) (*oidc.IDTokenVerifier, bool) {
+	iss, ok := fc.GetIssuer(issuerURL, audience)
 	if !ok {
 		return nil, false
 	}
@@ -205,8 +229,10 @@ func (fc *FulcioConfig) GetVerifier(issuerURL string, opts ...InsecureOIDCConfig
 	for _, o := range opts {
 		o(cfg)
 	}
+	vKey := verifierKey(issuerURL, iss.ClientID)
+
 	// Look up our fixed issuer verifiers
-	v, ok := fc.verifiers[issuerURL]
+	v, ok := fc.verifiers[vKey]
 	if ok {
 		for _, c := range v {
 			if reflect.DeepEqual(c.Config, cfg) {
@@ -216,7 +242,7 @@ func (fc *FulcioConfig) GetVerifier(issuerURL string, opts ...InsecureOIDCConfig
 	}
 
 	// Look in the LRU cache for a verifier
-	v, ok = fc.lru.Get(issuerURL)
+	v, ok = fc.lru.Get(vKey)
 	if ok {
 		for _, c := range v {
 			if reflect.DeepEqual(c.Config, cfg) {
@@ -250,7 +276,7 @@ func (fc *FulcioConfig) GetVerifier(issuerURL string, opts ...InsecureOIDCConfig
 		v = append(v, vwf)
 	}
 
-	fc.lru.Add(issuerURL, v)
+	fc.lru.Add(vKey, v)
 	return vwf.IDTokenVerifier, true
 }
 
@@ -300,7 +326,7 @@ func httpClientForIssuer(fc *FulcioConfig, iss OIDCIssuer) (*http.Client, error)
 		return transport
 	}
 
-	_, hasK8SIssuer := fc.GetIssuer(k8sIssuerURL)
+	_, hasK8SIssuer := fc.GetIssuer(k8sIssuerURL, "")
 	if iss.Type == IssuerTypeKubernetes && hasK8SIssuer {
 		// Add the Kubernetes cluster's CA to the client's CA pool
 		certs, err := os.ReadFile(k8sCA)
@@ -391,7 +417,7 @@ func (fc *FulcioConfig) insertVerifier(iss OIDCIssuer) error {
 		return err
 	}
 	cfg := &oidc.Config{ClientID: iss.ClientID}
-	fc.verifiers[iss.IssuerURL] = []*verifierWithConfig{{provider.Verifier(cfg), cfg}}
+	fc.verifiers[verifierKey(iss.IssuerURL, iss.ClientID)] = []*verifierWithConfig{{provider.Verifier(cfg), cfg}}
 	return nil
 }
 

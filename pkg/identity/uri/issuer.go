@@ -26,8 +26,8 @@ type uriIssuer struct {
 	identity.Issuer
 }
 
-func Issuer(issuerURL string) identity.Issuer {
-	return &uriIssuer{base.Issuer(issuerURL)}
+func Issuer(issuerURL, clientID string) identity.Issuer {
+	return &uriIssuer{base.Issuer(issuerURL, clientID)}
 }
 
 func (e *uriIssuer) Authenticate(ctx context.Context, token string, opts ...config.InsecureOIDCConfigOption) (identity.Principal, error) {
