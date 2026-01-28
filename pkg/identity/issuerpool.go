@@ -41,8 +41,26 @@ func (p IssuerPool) Authenticate(ctx context.Context, token string, opts ...conf
 }
 
 type tokenClaims struct {
-	Issuer   string `json:"iss"`
-	Audience string `json:"aud"`
+	Issuer   string   `json:"iss"`
+	Audience string   `json:"-"`
+	RawAud   json.RawMessage `json:"aud"`
+}
+
+func (tc *tokenClaims) parseAudience() {
+	if tc.RawAud == nil {
+		return
+	}
+	// Try string first
+	var s string
+	if err := json.Unmarshal(tc.RawAud, &s); err == nil {
+		tc.Audience = s
+		return
+	}
+	// Try array of strings
+	var arr []string
+	if err := json.Unmarshal(tc.RawAud, &arr); err == nil && len(arr) > 0 {
+		tc.Audience = arr[0]
+	}
 }
 
 func extractTokenClaims(token string) (*tokenClaims, error) {
@@ -60,6 +78,7 @@ func extractTokenClaims(token string) (*tokenClaims, error) {
 	if err := json.Unmarshal(raw, &claims); err != nil {
 		return nil, fmt.Errorf("oidc: failed to unmarshal claims: %w", err)
 	}
+	claims.parseAudience()
 	return &claims, nil
 }
 
