@@ -33,7 +33,7 @@ func (p IssuerPool) Authenticate(ctx context.Context, token string, opts ...conf
 	}
 
 	for _, issuer := range p {
-		if issuer.Match(ctx, claims.Issuer, claims.Audience) {
+		if issuer.Match(ctx, claims.Issuer) {
 			return issuer.Authenticate(ctx, token, opts...)
 		}
 	}

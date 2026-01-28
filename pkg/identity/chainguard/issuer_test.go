@@ -31,14 +31,14 @@ import (
 func TestIssuer(t *testing.T) {
 	ctx := context.Background()
 	url := "test-issuer-url"
-	issuer := Issuer(url, "")
+	issuer := Issuer(url)
 
 	// test the Match function
 	t.Run("match", func(t *testing.T) {
-		if matches := issuer.Match(ctx, url, ""); !matches {
+		if matches := issuer.Match(ctx, url); !matches {
 			t.Fatal("expected url to match but it doesn't")
 		}
-		if matches := issuer.Match(ctx, "some-other-url", ""); matches {
+		if matches := issuer.Match(ctx, "some-other-url"); matches {
 			t.Fatal("expected match to fail but it didn't")
 		}
 	})

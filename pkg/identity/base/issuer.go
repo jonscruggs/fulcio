@@ -30,11 +30,10 @@ var (
 
 type baseIssuer struct {
 	issuerURL string
-	clientID  string
 }
 
-func Issuer(issuerURL, clientID string) identity.Issuer {
-	return &baseIssuer{issuerURL: issuerURL, clientID: clientID}
+func Issuer(issuerURL string) identity.Issuer {
+	return &baseIssuer{issuerURL: issuerURL}
 }
 
 // This is unimplemented for the base issuer, and should be implemented unique to each issuer
@@ -42,28 +41,16 @@ func (e *baseIssuer) Authenticate(ctx context.Context, token string, opts ...con
 	return nil, fmt.Errorf("unimplemented")
 }
 
-// Match is the same across issuers, so it doesn't need to be implemented anywhere else.
-// It checks if the issuer URL matches and, when a clientID is configured, also checks
-// that the token's audience matches the expected clientID.
-func (e *baseIssuer) Match(_ context.Context, url string, audience string) bool {
-	urlMatch := false
+// Match is the same across issuers, so it doesn't need to be implemented anywhere else
+func (e *baseIssuer) Match(_ context.Context, url string) bool {
 	if url == e.issuerURL {
-		urlMatch = true
-	} else {
-		// If this is a MetaIssuer the issuer URL could be a regex
-		// Check if the regex is valid against the provided url
-		re, err := config.MetaRegex(e.issuerURL)
-		if err != nil {
-			return false
-		}
-		urlMatch = re.MatchString(url)
+		return true
 	}
-	if !urlMatch {
+	// If this is a MetaIssuer the issuer URL could be a regex
+	// Check if the regex is valid against the provided url
+	re, err := config.MetaRegex(e.issuerURL)
+	if err != nil {
 		return false
 	}
-	// If a clientID is configured, also require the audience to match
-	if e.clientID != "" {
-		return audience == e.clientID
-	}
-	return true
+	return re.MatchString(url)
 }

@@ -47,7 +47,7 @@ func TestIssuerPool(t *testing.T) {
 	}
 	// Build the expected issuer pool
 	expected := identity.IssuerPool{
-		email.Issuer("https://oauth2.sigstore.dev/auth", ""),
+		email.Issuer("https://oauth2.sigstore.dev/auth"),
 	}
 	ignoreOpts := []cmp.Option{base.CmpOptions}
 	got := NewIssuerPool(cfg)
@@ -65,7 +65,7 @@ func TestIssuerPool(t *testing.T) {
 		},
 	}
 	expected = identity.IssuerPool{
-		kubernetes.Issuer("https://oidc.eks.*.amazonaws.com/id/*", ""),
+		kubernetes.Issuer("https://oidc.eks.*.amazonaws.com/id/*"),
 	}
 	got = NewIssuerPool(cfg)
 	if d := cmp.Diff(expected, got, ignoreOpts...); d != "" {
@@ -85,42 +85,42 @@ func TestGetIssuer(t *testing.T) {
 				IssuerURL: "email.com",
 				Type:      "email",
 			},
-			expected: email.Issuer("email.com", ""),
+			expected: email.Issuer("email.com"),
 		}, {
 			description: "github",
 			issuer: config.OIDCIssuer{
 				IssuerURL: "github.com",
 				Type:      "github-workflow",
 			},
-			expected: github.Issuer("github.com", ""), // nolint
+			expected: github.Issuer("github.com"), // nolint
 		}, {
 			description: "spiffe",
 			issuer: config.OIDCIssuer{
 				IssuerURL: "spiffe.com",
 				Type:      "spiffe",
 			},
-			expected: spiffe.Issuer("spiffe.com", ""),
+			expected: spiffe.Issuer("spiffe.com"),
 		}, {
 			description: "kubernetes",
 			issuer: config.OIDCIssuer{
 				IssuerURL: "kubernetes.com",
 				Type:      "kubernetes",
 			},
-			expected: kubernetes.Issuer("kubernetes.com", ""),
+			expected: kubernetes.Issuer("kubernetes.com"),
 		}, {
 			description: "uri",
 			issuer: config.OIDCIssuer{
 				IssuerURL: "uri.com",
 				Type:      "uri",
 			},
-			expected: uri.Issuer("uri.com", ""),
+			expected: uri.Issuer("uri.com"),
 		}, {
 			description: "username",
 			issuer: config.OIDCIssuer{
 				IssuerURL: "username.com",
 				Type:      "username",
 			},
-			expected: username.Issuer("username.com", ""),
+			expected: username.Issuer("username.com"),
 		},
 	}
 

@@ -29,8 +29,8 @@ type githubIssuer struct {
 }
 
 // Deprecated: Use ciprovider.Issuer instead
-func Issuer(issuerURL, clientID string) identity.Issuer {
-	return &githubIssuer{base.Issuer(issuerURL, clientID)}
+func Issuer(issuerURL string) identity.Issuer {
+	return &githubIssuer{base.Issuer(issuerURL)}
 }
 
 func (e *githubIssuer) Authenticate(ctx context.Context, token string, opts ...config.InsecureOIDCConfigOption) (identity.Principal, error) {

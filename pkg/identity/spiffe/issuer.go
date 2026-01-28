@@ -26,8 +26,8 @@ type spiffeIssuer struct {
 	identity.Issuer
 }
 
-func Issuer(issuerURL, clientID string) identity.Issuer {
-	return &spiffeIssuer{base.Issuer(issuerURL, clientID)}
+func Issuer(issuerURL string) identity.Issuer {
+	return &spiffeIssuer{base.Issuer(issuerURL)}
 }
 
 func (e *spiffeIssuer) Authenticate(ctx context.Context, token string, opts ...config.InsecureOIDCConfigOption) (identity.Principal, error) {
