@@ -161,6 +161,16 @@ func MetaRegex(issuer string) (*regexp.Regexp, error) {
 	return regexp.Compile(replaced)
 }
 
+// FirstAudience returns the first element of the audience list, or an
+// empty string if the list is empty. This is a convenience for extracting
+// the audience from an oidc.IDToken to pass to GetIssuer/GetVerifier.
+func FirstAudience(audience []string) string {
+	if len(audience) > 0 {
+		return audience[0]
+	}
+	return ""
+}
+
 // GetIssuer looks up the issuer configuration for an `issuerURL`
 // coming from an incoming OIDC token. When multiple issuers share the same
 // IssuerURL, the `audience` parameter (from the token's aud claim) is used
