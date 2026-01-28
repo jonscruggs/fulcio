@@ -176,30 +176,42 @@ func FirstAudience(audience []string) string {
 // to disambiguate by matching against the issuer's ClientID.
 // If no matching configuration is found, then it returns `false`.
 func (fc *FulcioConfig) GetIssuer(issuerURL, audience string) (OIDCIssuer, bool) {
+	log.Logger.Debugf("GetIssuer: looking up issuerURL=%q audience=%q", issuerURL, audience)
+
 	var candidates []OIDCIssuer
-	for _, iss := range fc.OIDCIssuers {
+	for key, iss := range fc.OIDCIssuers {
 		if iss.IssuerURL == issuerURL {
+			log.Logger.Debugf("GetIssuer: found candidate key=%q clientID=%q type=%q", key, iss.ClientID, iss.Type)
 			candidates = append(candidates, iss)
 		}
 	}
+
 	if len(candidates) == 1 {
+		log.Logger.Debugf("GetIssuer: single candidate match, returning clientID=%q type=%q", candidates[0].ClientID, candidates[0].Type)
 		return candidates[0], true
 	}
 	if len(candidates) > 1 {
+		log.Logger.Debugf("GetIssuer: %d candidates for issuerURL=%q, disambiguating by audience=%q", len(candidates), issuerURL, audience)
 		for _, iss := range candidates {
 			if iss.ClientID == audience {
+				log.Logger.Debugf("GetIssuer: audience matched clientID=%q type=%q", iss.ClientID, iss.Type)
 				return iss, true
 			}
+			log.Logger.Debugf("GetIssuer: audience=%q did not match clientID=%q", audience, iss.ClientID)
 		}
+		log.Logger.Warnf("GetIssuer: no candidate matched audience=%q for issuerURL=%q (candidates: %d)", audience, issuerURL, len(candidates))
 		return OIDCIssuer{}, false
 	}
 
+	log.Logger.Debugf("GetIssuer: no OIDCIssuers match, checking %d meta issuers", len(fc.MetaIssuers))
 	for meta, iss := range fc.MetaIssuers {
 		re, err := MetaRegex(meta)
 		if err != nil {
+			log.Logger.Debugf("GetIssuer: failed to compile meta regex for %q: %v", meta, err)
 			continue // Shouldn't happen, we check parsing the config
 		}
 		if re.MatchString(issuerURL) {
+			log.Logger.Debugf("GetIssuer: meta issuer matched pattern=%q clientID=%q type=%q", meta, iss.ClientID, iss.Type)
 			// If it matches, then return a concrete OIDCIssuer
 			// configuration for this issuer URL.
 			return OIDCIssuer{
@@ -214,6 +226,7 @@ func (fc *FulcioConfig) GetIssuer(issuerURL, audience string) (OIDCIssuer, bool)
 		}
 	}
 
+	log.Logger.Warnf("GetIssuer: no issuer found for issuerURL=%q audience=%q", issuerURL, audience)
 	return OIDCIssuer{}, false
 }
 
@@ -221,10 +234,13 @@ func (fc *FulcioConfig) GetIssuer(issuerURL, audience string) (OIDCIssuer, bool)
 // coming from an incoming OIDC token.  If no matching configuration
 // is found, then it returns `false`.
 func (fc *FulcioConfig) GetVerifier(issuerURL, audience string, opts ...InsecureOIDCConfigOption) (*oidc.IDTokenVerifier, bool) {
+	log.Logger.Debugf("GetVerifier: looking up issuerURL=%q audience=%q", issuerURL, audience)
 	iss, ok := fc.GetIssuer(issuerURL, audience)
 	if !ok {
+		log.Logger.Warnf("GetVerifier: no issuer config found for issuerURL=%q audience=%q", issuerURL, audience)
 		return nil, false
 	}
+	log.Logger.Debugf("GetVerifier: found issuer clientID=%q type=%q", iss.ClientID, iss.Type)
 	cfg := &oidc.Config{ClientID: iss.ClientID}
 	for _, o := range opts {
 		o(cfg)
@@ -234,9 +250,11 @@ func (fc *FulcioConfig) GetVerifier(issuerURL, audience string, opts ...Insecure
 	if ok {
 		for _, c := range v {
 			if reflect.DeepEqual(c.Config, cfg) {
+				log.Logger.Debugf("GetVerifier: found cached fixed verifier for issuerURL=%q clientID=%q", issuerURL, cfg.ClientID)
 				return c.IDTokenVerifier, true
 			}
 		}
+		log.Logger.Debugf("GetVerifier: %d fixed verifiers for issuerURL=%q but none matched clientID=%q", len(v), issuerURL, cfg.ClientID)
 	}
 
 	// Look in the LRU cache for a verifier
@@ -244,17 +262,20 @@ func (fc *FulcioConfig) GetVerifier(issuerURL, audience string, opts ...Insecure
 	if ok {
 		for _, c := range v {
 			if reflect.DeepEqual(c.Config, cfg) {
+				log.Logger.Debugf("GetVerifier: found cached LRU verifier for issuerURL=%q clientID=%q", issuerURL, cfg.ClientID)
 				return c.IDTokenVerifier, true
 			}
 		}
+		log.Logger.Debugf("GetVerifier: %d LRU verifiers for issuerURL=%q but none matched clientID=%q", len(v), issuerURL, cfg.ClientID)
 	}
 
 	// If this issuer hasn't been recently used, or we have special config options, then create a new verifier
 	// and add it to the LRU cache.
+	log.Logger.Debugf("GetVerifier: no cached verifier found, creating new provider for issuerURL=%q clientID=%q", issuerURL, cfg.ClientID)
 
 	client, err := httpClientForIssuer(fc, iss)
 	if err != nil {
-		log.Logger.Warnf("error building http client for issuer %q: %s", iss.IssuerURL, err)
+		log.Logger.Warnf("GetVerifier: error building http client for issuerURL=%q clientID=%q: %s", iss.IssuerURL, iss.ClientID, err)
 		return nil, false
 	}
 
@@ -263,9 +284,10 @@ func (fc *FulcioConfig) GetVerifier(issuerURL, audience string, opts ...Insecure
 
 	provider, err := oidc.NewProvider(oidc.ClientContext(ctx, client), issuerURL)
 	if err != nil {
-		log.Logger.Errorf("Failed to create provider for issuer URL %q: %v", issuerURL, err)
+		log.Logger.Errorf("GetVerifier: failed to create OIDC provider for issuerURL=%q clientID=%q: %v", issuerURL, cfg.ClientID, err)
 		return nil, false
 	}
+	log.Logger.Debugf("GetVerifier: created and cached new verifier for issuerURL=%q clientID=%q", issuerURL, cfg.ClientID)
 
 	vwf := &verifierWithConfig{provider.Verifier(cfg), cfg}
 	if v == nil {
