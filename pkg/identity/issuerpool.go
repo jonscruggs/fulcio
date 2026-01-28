@@ -81,12 +81,3 @@ func extractTokenClaims(token string) (*tokenClaims, error) {
 	claims.parseAudience()
 	return &claims, nil
 }
-
-// extractIssuerURL extracts just the issuer URL from a token (kept for use by authorize.go)
-func extractIssuerURL(token string) (string, error) {
-	claims, err := extractTokenClaims(token)
-	if err != nil {
-		return "", err
-	}
-	return claims.Issuer, nil
-}
