@@ -200,14 +200,14 @@ func TestExtractIssuerURL(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			gotURL, err := extractIssuerURL(test.Token)
+			claims, err := extractTokenClaims(test.Token)
 			if err != nil {
 				if !test.WantErr {
 					t.Error(err)
 				}
 			} else {
-				if gotURL != test.ExpectedURL {
-					t.Errorf("Wanted %s and got %s for issuer url", test.ExpectedURL, gotURL)
+				if claims.Issuer != test.ExpectedURL {
+					t.Errorf("Wanted %s and got %s for issuer url", test.ExpectedURL, claims.Issuer)
 				}
 			}
 		})

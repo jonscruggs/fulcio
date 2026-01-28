@@ -27,35 +27,57 @@ import (
 type IssuerPool []Issuer
 
 func (p IssuerPool) Authenticate(ctx context.Context, token string, opts ...config.InsecureOIDCConfigOption) (Principal, error) {
-	url, err := extractIssuerURL(token)
+	claims, err := extractTokenClaims(token)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, issuer := range p {
-		if issuer.Match(ctx, url) {
+		if issuer.Match(ctx, claims.Issuer) {
 			return issuer.Authenticate(ctx, token, opts...)
 		}
 	}
-	return nil, fmt.Errorf("failed to match issuer URL %s from token with any configured providers", url)
+	return nil, fmt.Errorf("failed to match issuer URL %s from token with any configured providers", claims.Issuer)
 }
 
-func extractIssuerURL(token string) (string, error) {
+type tokenClaims struct {
+	Issuer   string          `json:"iss"`
+	Audience string          `json:"-"`
+	RawAud   json.RawMessage `json:"aud"`
+}
+
+func (tc *tokenClaims) parseAudience() {
+	if tc.RawAud == nil {
+		return
+	}
+	// Try string first (OIDC allows aud as a single string)
+	var s string
+	if err := json.Unmarshal(tc.RawAud, &s); err == nil {
+		tc.Audience = s
+		return
+	}
+	// Try array of strings
+	var arr []string
+	if err := json.Unmarshal(tc.RawAud, &arr); err == nil && len(arr) > 0 {
+		tc.Audience = arr[0]
+	}
+}
+
+func extractTokenClaims(token string) (*tokenClaims, error) {
 	if strings.Count(token, ".") != 2 {
-		return "", fmt.Errorf("oidc: malformed jwt, token must have 3 parts")
+		return nil, fmt.Errorf("oidc: malformed jwt, token must have 3 parts")
 	}
 
 	parts := strings.SplitN(token, ".", 3)
 	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return "", fmt.Errorf("oidc: malformed jwt payload: %w", err)
+		return nil, fmt.Errorf("oidc: malformed jwt payload: %w", err)
 	}
 
-	var payload struct {
-		Issuer string `json:"iss"`
+	var claims tokenClaims
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		return nil, fmt.Errorf("oidc: failed to unmarshal claims: %w", err)
 	}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return "", fmt.Errorf("oidc: failed to unmarshal claims: %w", err)
-	}
-	return payload.Issuer, nil
+	claims.parseAudience()
+	return &claims, nil
 }

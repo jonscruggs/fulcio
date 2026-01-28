@@ -43,7 +43,7 @@ func TestLoadFulcioConfig(t *testing.T) {
 	}
 
 	for issuerURL := range fulcioConfig.OIDCIssuers {
-		got, ok := fulcioConfig.GetIssuer(issuerURL)
+		got, ok := fulcioConfig.GetIssuer(issuerURL, "")
 		if !ok {
 			t.Error("expected true, got false")
 		}
@@ -64,14 +64,14 @@ func TestLoadFulcioConfig(t *testing.T) {
 				t.Error("issuer with type ci-provider should have the same CI provider name as key for CIIssuerMetadata")
 			}
 		}
-		if _, ok := fulcioConfig.GetIssuer("not_an_issuer"); ok {
+		if _, ok := fulcioConfig.GetIssuer("not_an_issuer", ""); ok {
 			t.Error("no error returned from an unconfigured issuer")
 		}
 	}
 
 	for metaIssuerURLRegex := range fulcioConfig.MetaIssuers {
 		metaIssuerURL := strings.ReplaceAll(metaIssuerURLRegex, "*", "foo")
-		got, ok := fulcioConfig.GetIssuer(metaIssuerURL)
+		got, ok := fulcioConfig.GetIssuer(metaIssuerURL, "")
 		if !ok {
 			t.Errorf("expected true, got false, %s", metaIssuerURL)
 		}
@@ -93,7 +93,7 @@ func TestLoadFulcioConfig(t *testing.T) {
 				t.Error("issuer with type ci-provider should have the same CI provider name as key for CIIssuerMetadata")
 			}
 		}
-		if _, ok := fulcioConfig.GetIssuer("not_an_issuer"); ok {
+		if _, ok := fulcioConfig.GetIssuer("not_an_issuer", ""); ok {
 			t.Error("no error returned from an unconfigured issuer")
 		}
 	}

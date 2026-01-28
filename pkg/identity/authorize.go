@@ -26,23 +26,14 @@ import (
 var Authorize = actualAuthorize
 
 func actualAuthorize(ctx context.Context, token string, opts ...config.InsecureOIDCConfigOption) (*oidc.IDToken, error) {
-	issuer, err := extractIssuerURL(token)
+	claims, err := extractTokenClaims(token)
 	if err != nil {
 		return nil, err
 	}
 
-	verifiers := config.FromContext(ctx).GetVerifiers(issuer, opts...)
-	if len(verifiers) == 0 {
-		return nil, fmt.Errorf("unsupported issuer: %s", issuer)
+	verifier, ok := config.FromContext(ctx).GetVerifier(claims.Issuer, claims.Audience, opts...)
+	if !ok {
+		return nil, fmt.Errorf("unsupported issuer: %s", claims.Issuer)
 	}
-
-	var lastErr error
-	for _, verifier := range verifiers {
-		idToken, err := verifier.Verify(ctx, token)
-		if err == nil {
-			return idToken, nil
-		}
-		lastErr = err
-	}
-	return nil, lastErr
+	return verifier.Verify(ctx, token)
 }

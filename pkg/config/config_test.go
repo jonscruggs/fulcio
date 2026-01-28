@@ -790,7 +790,7 @@ func TestVerifierCache(t *testing.T) {
 	}
 
 	// make sure we get a hit
-	v, ok := fc.GetVerifier("issuer.dev")
+	v, ok := fc.GetVerifier("issuer.dev", "")
 	if !ok {
 		t.Fatal("unable to verifier")
 	}
@@ -799,7 +799,7 @@ func TestVerifierCache(t *testing.T) {
 	}
 
 	// get verifier with SkipExpiryCheck set, should fail on cache miss
-	_, ok = fc.GetVerifier("issuer.dev", WithSkipExpiryCheck())
+	_, ok = fc.GetVerifier("issuer.dev", "", WithSkipExpiryCheck())
 	if ok {
 		t.Fatal("expected cache miss")
 	}
@@ -819,7 +819,7 @@ func TestVerifierCache(t *testing.T) {
 		},
 	}
 	// make sure we get a hit and the correct verifier is returned
-	v, ok = fc.GetVerifier("issuer.dev", WithSkipExpiryCheck())
+	v, ok = fc.GetVerifier("issuer.dev", "", WithSkipExpiryCheck())
 	if !ok {
 		t.Fatal("unable to verifier")
 	}
@@ -876,7 +876,7 @@ func TestVerifierCacheWithCustomCA(t *testing.T) {
 		lru:       cache,
 	}
 
-	verifier, ok := fc.GetVerifier(server.URL)
+	verifier, ok := fc.GetVerifier(server.URL, "")
 	if !ok {
 		t.Fatal("expected to get verifier")
 	}
@@ -884,7 +884,7 @@ func TestVerifierCacheWithCustomCA(t *testing.T) {
 		t.Fatal("expected non-nil verifier")
 	}
 
-	cachedVerifier, ok := fc.GetVerifier(server.URL)
+	cachedVerifier, ok := fc.GetVerifier(server.URL, "")
 	if !ok {
 		t.Fatal("expected to get cached verifier")
 	}
@@ -892,7 +892,7 @@ func TestVerifierCacheWithCustomCA(t *testing.T) {
 		t.Fatal("cached verifier doesn't match original verifier")
 	}
 
-	verifierWithOptions, ok := fc.GetVerifier(server.URL, WithSkipExpiryCheck())
+	verifierWithOptions, ok := fc.GetVerifier(server.URL, "", WithSkipExpiryCheck())
 	if !ok {
 		t.Fatal("expected to get verifier with options")
 	}
@@ -1017,7 +1017,7 @@ func TestVerifyK8sDefaultIssuer(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			_, ok := test.fc.GetVerifier(k8sIssuerURL)
+			_, ok := test.fc.GetVerifier(k8sIssuerURL, "")
 			if !ok {
 				t.Fatal("expected to get verifier")
 			}
@@ -1147,21 +1147,6 @@ func TestMultipleIssuersWithSameURL(t *testing.T) {
 		},
 	}
 
-	// GetIssuers should return both
-	issuers := cfg.GetIssuers("https://issuer.example.com")
-	if len(issuers) != 2 {
-		t.Fatalf("expected 2 issuers, got %d", len(issuers))
-	}
-
-	// GetIssuer returns first match
-	iss, ok := cfg.GetIssuer("https://issuer.example.com")
-	if !ok {
-		t.Fatal("expected issuer to be found")
-	}
-	if iss.IssuerURL != "https://issuer.example.com" {
-		t.Errorf("expected issuer URL https://issuer.example.com, got %s", iss.IssuerURL)
-	}
-
 	// GetIssuer with audience selects by client ID
 	issA, ok := cfg.GetIssuer("https://issuer.example.com", "client-a")
 	if !ok {
@@ -1185,18 +1170,15 @@ func TestMultipleIssuersWithSameURL(t *testing.T) {
 		t.Errorf("expected ci-provider type, got %s", issB.Type)
 	}
 
-	// Unknown audience falls back to first match
-	issFallback, ok := cfg.GetIssuer("https://issuer.example.com", "unknown")
-	if !ok {
-		t.Fatal("expected fallback issuer to be found")
-	}
-	if issFallback.IssuerURL != "https://issuer.example.com" {
-		t.Errorf("expected fallback to return an issuer")
+	// Unknown audience with multiple candidates returns false
+	_, ok = cfg.GetIssuer("https://issuer.example.com", "unknown")
+	if ok {
+		t.Error("expected no match for unknown audience with multiple candidates")
 	}
 
 	// Unknown issuer URL returns nothing
-	issuers = cfg.GetIssuers("https://unknown.example.com")
-	if len(issuers) != 0 {
-		t.Errorf("expected 0 issuers for unknown URL, got %d", len(issuers))
+	_, ok = cfg.GetIssuer("https://unknown.example.com", "")
+	if ok {
+		t.Error("expected no issuer for unknown URL")
 	}
 }
