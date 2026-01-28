@@ -37,7 +37,7 @@ type principal struct {
 }
 
 func PrincipalFromIDToken(ctx context.Context, token *oidc.IDToken) (identity.Principal, error) {
-	cfg, ok := config.FromContext(ctx).GetIssuer(token.Issuer)
+	cfg, ok := config.FromContext(ctx).GetIssuer(token.Issuer, config.FirstAudience(token.Audience))
 	if !ok {
 		return nil, errors.New("invalid configuration for OIDC ID Token issuer")
 	}

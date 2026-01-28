@@ -22,40 +22,80 @@ import (
 	"strings"
 
 	"github.com/sigstore/fulcio/pkg/config"
+	"github.com/sigstore/fulcio/pkg/log"
 )
 
 type IssuerPool []Issuer
 
 func (p IssuerPool) Authenticate(ctx context.Context, token string, opts ...config.InsecureOIDCConfigOption) (Principal, error) {
-	url, err := extractIssuerURL(token)
+	claims, err := extractTokenClaims(token)
 	if err != nil {
+		log.Logger.Debugf("IssuerPool.Authenticate: failed to extract token claims: %v", err)
 		return nil, err
 	}
 
+	log.Logger.Debugf("IssuerPool.Authenticate: looking for issuer match for issuer=%q audience=%q among %d providers", claims.Issuer, claims.Audience, len(p))
+	var lastErr error
 	for _, issuer := range p {
-		if issuer.Match(ctx, url) {
-			return issuer.Authenticate(ctx, token, opts...)
+		if issuer.Match(ctx, claims.Issuer) {
+			log.Logger.Debugf("IssuerPool.Authenticate: matched issuer=%q, authenticating", claims.Issuer)
+			principal, err := issuer.Authenticate(ctx, token, opts...)
+			if err == nil {
+				return principal, nil
+			}
+			log.Logger.Debugf("IssuerPool.Authenticate: issuer=%q matched but authentication failed: %v, trying next", claims.Issuer, err)
+			lastErr = err
 		}
 	}
-	return nil, fmt.Errorf("failed to match issuer URL %s from token with any configured providers", url)
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	log.Logger.Warnf("IssuerPool.Authenticate: no configured provider matched issuer=%q audience=%q", claims.Issuer, claims.Audience)
+	return nil, fmt.Errorf("failed to match issuer URL %s from token with any configured providers", claims.Issuer)
 }
 
-func extractIssuerURL(token string) (string, error) {
+type tokenClaims struct {
+	Issuer   string          `json:"iss"`
+	Audience string          `json:"-"`
+	RawAud   json.RawMessage `json:"aud"`
+}
+
+func (tc *tokenClaims) parseAudience() {
+	if tc.RawAud == nil {
+		return
+	}
+	// Try string first (OIDC allows aud as a single string)
+	var s string
+	if err := json.Unmarshal(tc.RawAud, &s); err == nil {
+		tc.Audience = s
+		return
+	}
+	// Try array of strings
+	var arr []string
+	if err := json.Unmarshal(tc.RawAud, &arr); err == nil && len(arr) > 0 {
+		tc.Audience = arr[0]
+	}
+}
+
+func extractTokenClaims(token string) (*tokenClaims, error) {
 	if strings.Count(token, ".") != 2 {
-		return "", fmt.Errorf("oidc: malformed jwt, token must have 3 parts")
+		log.Logger.Debugf("extractTokenClaims: malformed jwt, expected 3 parts but got %d", strings.Count(token, ".")+1)
+		return nil, fmt.Errorf("oidc: malformed jwt, token must have 3 parts")
 	}
 
 	parts := strings.SplitN(token, ".", 3)
 	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return "", fmt.Errorf("oidc: malformed jwt payload: %w", err)
+		log.Logger.Debugf("extractTokenClaims: failed to base64-decode jwt payload: %v", err)
+		return nil, fmt.Errorf("oidc: malformed jwt payload: %w", err)
 	}
 
-	var payload struct {
-		Issuer string `json:"iss"`
+	var claims tokenClaims
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		log.Logger.Debugf("extractTokenClaims: failed to unmarshal jwt claims: %v", err)
+		return nil, fmt.Errorf("oidc: failed to unmarshal claims: %w", err)
 	}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return "", fmt.Errorf("oidc: failed to unmarshal claims: %w", err)
-	}
-	return payload.Issuer, nil
+	claims.parseAudience()
+	log.Logger.Debugf("extractTokenClaims: parsed issuer=%q audience=%q", claims.Issuer, claims.Audience)
+	return &claims, nil
 }

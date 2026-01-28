@@ -790,7 +790,7 @@ func TestVerifierCache(t *testing.T) {
 	}
 
 	// make sure we get a hit
-	v, ok := fc.GetVerifier("issuer.dev")
+	v, ok := fc.GetVerifier("issuer.dev", "")
 	if !ok {
 		t.Fatal("unable to verifier")
 	}
@@ -799,7 +799,7 @@ func TestVerifierCache(t *testing.T) {
 	}
 
 	// get verifier with SkipExpiryCheck set, should fail on cache miss
-	_, ok = fc.GetVerifier("issuer.dev", WithSkipExpiryCheck())
+	_, ok = fc.GetVerifier("issuer.dev", "", WithSkipExpiryCheck())
 	if ok {
 		t.Fatal("expected cache miss")
 	}
@@ -819,7 +819,7 @@ func TestVerifierCache(t *testing.T) {
 		},
 	}
 	// make sure we get a hit and the correct verifier is returned
-	v, ok = fc.GetVerifier("issuer.dev", WithSkipExpiryCheck())
+	v, ok = fc.GetVerifier("issuer.dev", "", WithSkipExpiryCheck())
 	if !ok {
 		t.Fatal("unable to verifier")
 	}
@@ -876,7 +876,7 @@ func TestVerifierCacheWithCustomCA(t *testing.T) {
 		lru:       cache,
 	}
 
-	verifier, ok := fc.GetVerifier(server.URL)
+	verifier, ok := fc.GetVerifier(server.URL, "")
 	if !ok {
 		t.Fatal("expected to get verifier")
 	}
@@ -884,7 +884,7 @@ func TestVerifierCacheWithCustomCA(t *testing.T) {
 		t.Fatal("expected non-nil verifier")
 	}
 
-	cachedVerifier, ok := fc.GetVerifier(server.URL)
+	cachedVerifier, ok := fc.GetVerifier(server.URL, "")
 	if !ok {
 		t.Fatal("expected to get cached verifier")
 	}
@@ -892,7 +892,7 @@ func TestVerifierCacheWithCustomCA(t *testing.T) {
 		t.Fatal("cached verifier doesn't match original verifier")
 	}
 
-	verifierWithOptions, ok := fc.GetVerifier(server.URL, WithSkipExpiryCheck())
+	verifierWithOptions, ok := fc.GetVerifier(server.URL, "", WithSkipExpiryCheck())
 	if !ok {
 		t.Fatal("expected to get verifier with options")
 	}
@@ -1017,7 +1017,7 @@ func TestVerifyK8sDefaultIssuer(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			_, ok := test.fc.GetVerifier(k8sIssuerURL)
+			_, ok := test.fc.GetVerifier(k8sIssuerURL, "")
 			if !ok {
 				t.Fatal("expected to get verifier")
 			}
@@ -1129,4 +1129,56 @@ type mockKeySet struct {
 
 func (m *mockKeySet) VerifySignature(_ context.Context, _ string) (payload []byte, err error) {
 	return nil, nil
+}
+
+func TestMultipleIssuersWithSameURL(t *testing.T) {
+	cfg := &FulcioConfig{
+		OIDCIssuers: map[string]OIDCIssuer{
+			"https://issuer.example.com": {
+				IssuerURL: "https://issuer.example.com",
+				ClientID:  "client-a",
+				Type:      IssuerTypeEmail,
+			},
+			"https://issuer.example.com#ci": {
+				IssuerURL: "https://issuer.example.com",
+				ClientID:  "client-b",
+				Type:      IssuerTypeCIProvider,
+			},
+		},
+	}
+
+	// GetIssuer with audience selects by client ID
+	issA, ok := cfg.GetIssuer("https://issuer.example.com", "client-a")
+	if !ok {
+		t.Fatal("expected issuer to be found for client-a")
+	}
+	if issA.ClientID != "client-a" {
+		t.Errorf("expected client-a, got %s", issA.ClientID)
+	}
+	if issA.Type != IssuerTypeEmail {
+		t.Errorf("expected email type, got %s", issA.Type)
+	}
+
+	issB, ok := cfg.GetIssuer("https://issuer.example.com", "client-b")
+	if !ok {
+		t.Fatal("expected issuer to be found for client-b")
+	}
+	if issB.ClientID != "client-b" {
+		t.Errorf("expected client-b, got %s", issB.ClientID)
+	}
+	if issB.Type != IssuerTypeCIProvider {
+		t.Errorf("expected ci-provider type, got %s", issB.Type)
+	}
+
+	// Unknown audience with multiple candidates returns false
+	_, ok = cfg.GetIssuer("https://issuer.example.com", "unknown")
+	if ok {
+		t.Error("expected no match for unknown audience with multiple candidates")
+	}
+
+	// Unknown issuer URL returns nothing
+	_, ok = cfg.GetIssuer("https://unknown.example.com", "")
+	if ok {
+		t.Error("expected no issuer for unknown URL")
+	}
 }

@@ -26,6 +26,7 @@ import (
 
 	"github.com/sigstore/fulcio/pkg/config"
 	"github.com/sigstore/fulcio/pkg/identity"
+	"github.com/sigstore/fulcio/pkg/log"
 	"github.com/sigstore/fulcio/pkg/identity/buildkite"
 	"github.com/sigstore/fulcio/pkg/identity/ciprovider"
 	"github.com/sigstore/fulcio/pkg/identity/email"
@@ -59,10 +60,13 @@ func CheckSignatureWithVerifier(verifier signature.Verifier, proof []byte, subje
 }
 
 func PrincipalFromIDToken(ctx context.Context, tok *oidc.IDToken) (identity.Principal, error) {
-	iss, ok := config.FromContext(ctx).GetIssuer(tok.Issuer)
+	log.Logger.Debugf("PrincipalFromIDToken: looking up issuer=%q audience=%q subject=%q", tok.Issuer, tok.Audience, tok.Subject)
+	iss, ok := config.FromContext(ctx).GetIssuer(tok.Issuer, config.FirstAudience(tok.Audience))
 	if !ok {
+		log.Logger.Warnf("PrincipalFromIDToken: no issuer config found for issuer=%q audience=%v", tok.Issuer, tok.Audience)
 		return nil, fmt.Errorf("configuration can not be loaded for issuer %v", tok.Issuer)
 	}
+	log.Logger.Debugf("PrincipalFromIDToken: matched issuer type=%q clientID=%q for issuer=%q", iss.Type, iss.ClientID, tok.Issuer)
 	var principal identity.Principal
 	var err error
 	switch iss.Type {
