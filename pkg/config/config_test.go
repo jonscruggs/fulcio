@@ -781,7 +781,7 @@ func TestVerifierCache(t *testing.T) {
 	cfg := &oidc.Config{ClientID: "sigstore"}
 	verifier := oidc.NewVerifier("issuer.dev", &mockKeySet{}, cfg)
 	fc.verifiers = map[string][]*verifierWithConfig{
-		"issuer.dev|sigstore": {
+		"issuer.dev\x00sigstore": {
 			{
 				Config:          cfg,
 				IDTokenVerifier: verifier,
@@ -808,7 +808,7 @@ func TestVerifierCache(t *testing.T) {
 	withExpiryCfg := &oidc.Config{ClientID: "sigstore", SkipExpiryCheck: true}
 	expiryVerifier := oidc.NewVerifier("issuer.dev", &mockKeySet{}, cfg)
 	fc.verifiers = map[string][]*verifierWithConfig{
-		"issuer.dev|sigstore": {
+		"issuer.dev\x00sigstore": {
 			{
 				Config:          cfg,
 				IDTokenVerifier: verifier,

@@ -224,7 +224,7 @@ func (fc *FulcioConfig) GetIssuer(issuerURL, audience string) (OIDCIssuer, bool)
 // verifierKey returns a composite key for the verifiers map, combining
 // issuer URL and client ID to support multiple issuers with the same URL.
 func verifierKey(issuerURL, clientID string) string {
-	return issuerURL + "|" + clientID
+	return issuerURL + "\x00" + clientID
 }
 
 // GetVerifier fetches a token verifier for the given `issuerURL` and `audience`
