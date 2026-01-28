@@ -28,22 +28,30 @@ import (
 	"github.com/sigstore/fulcio/pkg/identity/spiffe"
 	"github.com/sigstore/fulcio/pkg/identity/uri"
 	"github.com/sigstore/fulcio/pkg/identity/username"
+	"github.com/sigstore/fulcio/pkg/log"
 )
 
 func NewIssuerPool(cfg *config.FulcioConfig) identity.IssuerPool {
 	var ip identity.IssuerPool
-	for _, i := range cfg.OIDCIssuers {
+	for key, i := range cfg.OIDCIssuers {
+		log.Logger.Debugf("NewIssuerPool: adding OIDCIssuer key=%q issuerURL=%q type=%q clientID=%q", key, i.IssuerURL, i.Type, i.ClientID)
 		iss := getIssuer("", i)
 		if iss != nil {
 			ip = append(ip, iss)
+		} else {
+			log.Logger.Warnf("NewIssuerPool: no issuer handler for type=%q key=%q", i.Type, key)
 		}
 	}
 	for meta, i := range cfg.MetaIssuers {
+		log.Logger.Debugf("NewIssuerPool: adding MetaIssuer pattern=%q type=%q clientID=%q", meta, i.Type, i.ClientID)
 		iss := getIssuer(meta, i)
 		if iss != nil {
 			ip = append(ip, iss)
+		} else {
+			log.Logger.Warnf("NewIssuerPool: no issuer handler for type=%q meta=%q", i.Type, meta)
 		}
 	}
+	log.Logger.Debugf("NewIssuerPool: created pool with %d issuers", len(ip))
 
 	return ip
 }

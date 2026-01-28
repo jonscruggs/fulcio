@@ -180,8 +180,8 @@ func (fc *FulcioConfig) GetIssuer(issuerURL, audience string) (OIDCIssuer, bool)
 
 	var candidates []OIDCIssuer
 	for key, iss := range fc.OIDCIssuers {
-		if iss.IssuerURL == issuerURL {
-			log.Logger.Debugf("GetIssuer: found candidate key=%q clientID=%q type=%q", key, iss.ClientID, iss.Type)
+		if iss.IssuerURL == issuerURL || key == issuerURL {
+			log.Logger.Debugf("GetIssuer: found candidate key=%q issuerURL=%q clientID=%q type=%q", key, iss.IssuerURL, iss.ClientID, iss.Type)
 			candidates = append(candidates, iss)
 		}
 	}
@@ -397,13 +397,18 @@ func httpClientForIssuer(fc *FulcioConfig, iss OIDCIssuer) (*http.Client, error)
 }
 
 func (fc *FulcioConfig) prepare() error {
+	log.Logger.Debugf("prepare: loading %d OIDCIssuers and %d MetaIssuers", len(fc.OIDCIssuers), len(fc.MetaIssuers))
 	fc.verifiers = make(map[string][]*verifierWithConfig, len(fc.OIDCIssuers))
-	for _, iss := range fc.OIDCIssuers {
+	successCount := 0
+	for key, iss := range fc.OIDCIssuers {
+		log.Logger.Debugf("prepare: inserting verifier for key=%q issuerURL=%q clientID=%q type=%q", key, iss.IssuerURL, iss.ClientID, iss.Type)
 		if err := fc.insertVerifier(iss); err != nil {
-			log.Logger.Errorf("error creating provider for issuer URL %q: %v", iss.IssuerURL, err)
+			log.Logger.Errorf("prepare: error creating provider for issuer URL %q (key=%q): %v", iss.IssuerURL, key, err)
 			continue
 		}
+		successCount++
 	}
+	log.Logger.Debugf("prepare: successfully loaded %d/%d OIDC issuer verifiers", successCount, len(fc.OIDCIssuers))
 
 	cache, err := lru.New2Q[string, []*verifierWithConfig](100 /* size */)
 	if err != nil {
@@ -649,13 +654,15 @@ func validateCIIssuerMetadata(fulcioConfig *FulcioConfig) error {
 // Load a config from disk, or use defaults
 func Load(configPath string) (*FulcioConfig, error) {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		log.Logger.Infof("No config at %s, using defaults: %v", configPath, DefaultConfig)
+		log.Logger.Infof("Load: no config at %s, using defaults", configPath)
 		config := DefaultConfig
 		if err := config.prepare(); err != nil {
 			return nil, err
 		}
+		log.Logger.Debugf("Load: default config has %d OIDCIssuers, %d MetaIssuers", len(config.OIDCIssuers), len(config.MetaIssuers))
 		return config, nil
 	}
+	log.Logger.Debugf("Load: reading config from %s", configPath)
 	b, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
@@ -669,6 +676,7 @@ func Read(b []byte) (*FulcioConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse: %w", err)
 	}
+	log.Logger.Debugf("Read: parsed config with %d OIDCIssuers, %d MetaIssuers", len(config.OIDCIssuers), len(config.MetaIssuers))
 
 	err = validateConfig(config)
 	if err != nil {
@@ -678,6 +686,7 @@ func Read(b []byte) (*FulcioConfig, error) {
 	if err := config.prepare(); err != nil {
 		return nil, err
 	}
+	log.Logger.Debugf("Read: config ready with %d OIDCIssuers, %d MetaIssuers", len(config.OIDCIssuers), len(config.MetaIssuers))
 	return config, nil
 }
 
