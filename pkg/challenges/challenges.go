@@ -59,7 +59,7 @@ func CheckSignatureWithVerifier(verifier signature.Verifier, proof []byte, subje
 }
 
 func PrincipalFromIDToken(ctx context.Context, tok *oidc.IDToken) (identity.Principal, error) {
-	iss, ok := config.FromContext(ctx).GetIssuer(tok.Issuer)
+	iss, ok := config.FromContext(ctx).GetIssuer(tok.Issuer, tok.Audience...)
 	if !ok {
 		return nil, fmt.Errorf("configuration can not be loaded for issuer %v", tok.Issuer)
 	}

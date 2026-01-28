@@ -1130,3 +1130,73 @@ type mockKeySet struct {
 func (m *mockKeySet) VerifySignature(_ context.Context, _ string) (payload []byte, err error) {
 	return nil, nil
 }
+
+func TestMultipleIssuersWithSameURL(t *testing.T) {
+	cfg := &FulcioConfig{
+		OIDCIssuers: map[string]OIDCIssuer{
+			"https://issuer.example.com": {
+				IssuerURL: "https://issuer.example.com",
+				ClientID:  "client-a",
+				Type:      IssuerTypeEmail,
+			},
+			"https://issuer.example.com#ci": {
+				IssuerURL: "https://issuer.example.com",
+				ClientID:  "client-b",
+				Type:      IssuerTypeCIProvider,
+			},
+		},
+	}
+
+	// GetIssuers should return both
+	issuers := cfg.GetIssuers("https://issuer.example.com")
+	if len(issuers) != 2 {
+		t.Fatalf("expected 2 issuers, got %d", len(issuers))
+	}
+
+	// GetIssuer returns first match
+	iss, ok := cfg.GetIssuer("https://issuer.example.com")
+	if !ok {
+		t.Fatal("expected issuer to be found")
+	}
+	if iss.IssuerURL != "https://issuer.example.com" {
+		t.Errorf("expected issuer URL https://issuer.example.com, got %s", iss.IssuerURL)
+	}
+
+	// GetIssuer with audience selects by client ID
+	issA, ok := cfg.GetIssuer("https://issuer.example.com", "client-a")
+	if !ok {
+		t.Fatal("expected issuer to be found for client-a")
+	}
+	if issA.ClientID != "client-a" {
+		t.Errorf("expected client-a, got %s", issA.ClientID)
+	}
+	if issA.Type != IssuerTypeEmail {
+		t.Errorf("expected email type, got %s", issA.Type)
+	}
+
+	issB, ok := cfg.GetIssuer("https://issuer.example.com", "client-b")
+	if !ok {
+		t.Fatal("expected issuer to be found for client-b")
+	}
+	if issB.ClientID != "client-b" {
+		t.Errorf("expected client-b, got %s", issB.ClientID)
+	}
+	if issB.Type != IssuerTypeCIProvider {
+		t.Errorf("expected ci-provider type, got %s", issB.Type)
+	}
+
+	// Unknown audience falls back to first match
+	issFallback, ok := cfg.GetIssuer("https://issuer.example.com", "unknown")
+	if !ok {
+		t.Fatal("expected fallback issuer to be found")
+	}
+	if issFallback.IssuerURL != "https://issuer.example.com" {
+		t.Errorf("expected fallback to return an issuer")
+	}
+
+	// Unknown issuer URL returns nothing
+	issuers = cfg.GetIssuers("https://unknown.example.com")
+	if len(issuers) != 0 {
+		t.Errorf("expected 0 issuers for unknown URL, got %d", len(issuers))
+	}
+}

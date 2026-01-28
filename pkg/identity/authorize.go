@@ -31,9 +31,18 @@ func actualAuthorize(ctx context.Context, token string, opts ...config.InsecureO
 		return nil, err
 	}
 
-	verifier, ok := config.FromContext(ctx).GetVerifier(issuer, opts...)
-	if !ok {
+	verifiers := config.FromContext(ctx).GetVerifiers(issuer, opts...)
+	if len(verifiers) == 0 {
 		return nil, fmt.Errorf("unsupported issuer: %s", issuer)
 	}
-	return verifier.Verify(ctx, token)
+
+	var lastErr error
+	for _, verifier := range verifiers {
+		idToken, err := verifier.Verify(ctx, token)
+		if err == nil {
+			return idToken, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
 }

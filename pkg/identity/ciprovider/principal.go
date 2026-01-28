@@ -112,7 +112,7 @@ type ciPrincipal struct {
 
 func WorkflowPrincipalFromIDToken(ctx context.Context, token *oidc.IDToken) (identity.Principal, error) {
 	cfg := config.FromContext(ctx)
-	issuerCfg, ok := cfg.GetIssuer(token.Issuer)
+	issuerCfg, ok := cfg.GetIssuer(token.Issuer, token.Audience...)
 	if !ok {
 		return nil, fmt.Errorf("configuration can not be loaded for issuer %v", token.Issuer)
 	}

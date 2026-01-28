@@ -162,12 +162,37 @@ func MetaRegex(issuer string) (*regexp.Regexp, error) {
 }
 
 // GetIssuer looks up the issuer configuration for an `issuerURL`
-// coming from an incoming OIDC token.  If no matching configuration
+// coming from an incoming OIDC token. If no matching configuration
 // is found, then it returns `false`.
-func (fc *FulcioConfig) GetIssuer(issuerURL string) (OIDCIssuer, bool) {
-	iss, ok := fc.OIDCIssuers[issuerURL]
-	if ok {
-		return iss, ok
+// When audiences are provided, the lookup prefers an issuer whose ClientID
+// matches one of the audiences. This disambiguates when multiple issuers
+// share the same URL with different client IDs.
+func (fc *FulcioConfig) GetIssuer(issuerURL string, audiences ...string) (OIDCIssuer, bool) {
+	issuers := fc.GetIssuers(issuerURL)
+	if len(issuers) == 0 {
+		return OIDCIssuer{}, false
+	}
+	for _, iss := range issuers {
+		for _, aud := range audiences {
+			if iss.ClientID == aud {
+				return iss, true
+			}
+		}
+	}
+	return issuers[0], true
+}
+
+// GetIssuers returns all issuer configurations matching the given issuerURL.
+// Multiple configurations may exist for the same URL with different client IDs.
+func (fc *FulcioConfig) GetIssuers(issuerURL string) []OIDCIssuer {
+	var issuers []OIDCIssuer
+	for _, iss := range fc.OIDCIssuers {
+		if iss.IssuerURL == issuerURL {
+			issuers = append(issuers, iss)
+		}
+	}
+	if len(issuers) > 0 {
+		return issuers
 	}
 
 	for meta, iss := range fc.MetaIssuers {
@@ -178,7 +203,7 @@ func (fc *FulcioConfig) GetIssuer(issuerURL string) (OIDCIssuer, bool) {
 		if re.MatchString(issuerURL) {
 			// If it matches, then return a concrete OIDCIssuer
 			// configuration for this issuer URL.
-			return OIDCIssuer{
+			issuers = append(issuers, OIDCIssuer{
 				IssuerURL:             issuerURL,
 				ClientID:              iss.ClientID,
 				Type:                  iss.Type,
@@ -186,72 +211,97 @@ func (fc *FulcioConfig) GetIssuer(issuerURL string) (OIDCIssuer, bool) {
 				SubjectDomain:         iss.SubjectDomain,
 				CIProvider:            iss.CIProvider,
 				SkipEmailVerification: iss.SkipEmailVerification,
-			}, true
+			})
 		}
 	}
 
-	return OIDCIssuer{}, false
+	return issuers
 }
 
 // GetVerifier fetches a token verifier for the given `issuerURL`
 // coming from an incoming OIDC token.  If no matching configuration
 // is found, then it returns `false`.
 func (fc *FulcioConfig) GetVerifier(issuerURL string, opts ...InsecureOIDCConfigOption) (*oidc.IDTokenVerifier, bool) {
-	iss, ok := fc.GetIssuer(issuerURL)
-	if !ok {
-		return nil, false
+	verifiers := fc.GetVerifiers(issuerURL, opts...)
+	if len(verifiers) > 0 {
+		return verifiers[0], true
 	}
-	cfg := &oidc.Config{ClientID: iss.ClientID}
-	for _, o := range opts {
-		o(cfg)
+	return nil, false
+}
+
+// GetVerifiers fetches all token verifiers for the given `issuerURL`.
+// Multiple verifiers may exist when the same issuer URL is configured
+// with different client IDs.
+func (fc *FulcioConfig) GetVerifiers(issuerURL string, opts ...InsecureOIDCConfigOption) []*oidc.IDTokenVerifier {
+	issuers := fc.GetIssuers(issuerURL)
+	if len(issuers) == 0 {
+		return nil
 	}
-	// Look up our fixed issuer verifiers
-	v, ok := fc.verifiers[issuerURL]
-	if ok {
-		for _, c := range v {
-			if reflect.DeepEqual(c.Config, cfg) {
-				return c.IDTokenVerifier, true
+
+	var result []*oidc.IDTokenVerifier
+	for _, iss := range issuers {
+		cfg := &oidc.Config{ClientID: iss.ClientID}
+		for _, o := range opts {
+			o(cfg)
+		}
+
+		// Look up our fixed issuer verifiers
+		if v, ok := fc.verifiers[issuerURL]; ok {
+			found := false
+			for _, c := range v {
+				if reflect.DeepEqual(c.Config, cfg) {
+					result = append(result, c.IDTokenVerifier)
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
 			}
 		}
-	}
 
-	// Look in the LRU cache for a verifier
-	v, ok = fc.lru.Get(issuerURL)
-	if ok {
-		for _, c := range v {
-			if reflect.DeepEqual(c.Config, cfg) {
-				return c.IDTokenVerifier, true
+		// Look in the LRU cache for a verifier
+		if v, ok := fc.lru.Get(issuerURL); ok {
+			found := false
+			for _, c := range v {
+				if reflect.DeepEqual(c.Config, cfg) {
+					result = append(result, c.IDTokenVerifier)
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
 			}
 		}
+
+		// Create a new verifier and add it to the LRU cache.
+		client, err := httpClientForIssuer(fc, iss)
+		if err != nil {
+			log.Logger.Warnf("error building http client for issuer %q: %s", iss.IssuerURL, err)
+			continue
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), defaultOIDCDiscoveryTimeout)
+		provider, err := oidc.NewProvider(oidc.ClientContext(ctx, client), issuerURL)
+		cancel()
+		if err != nil {
+			log.Logger.Errorf("Failed to create provider for issuer URL %q: %v", issuerURL, err)
+			continue
+		}
+
+		vwf := &verifierWithConfig{provider.Verifier(cfg), cfg}
+		v, _ := fc.lru.Get(issuerURL)
+		if v == nil {
+			v = []*verifierWithConfig{vwf}
+		} else {
+			v = append(v, vwf)
+		}
+		fc.lru.Add(issuerURL, v)
+		result = append(result, vwf.IDTokenVerifier)
 	}
 
-	// If this issuer hasn't been recently used, or we have special config options, then create a new verifier
-	// and add it to the LRU cache.
-
-	client, err := httpClientForIssuer(fc, iss)
-	if err != nil {
-		log.Logger.Warnf("error building http client for issuer %q: %s", iss.IssuerURL, err)
-		return nil, false
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), defaultOIDCDiscoveryTimeout)
-	defer cancel()
-
-	provider, err := oidc.NewProvider(oidc.ClientContext(ctx, client), issuerURL)
-	if err != nil {
-		log.Logger.Errorf("Failed to create provider for issuer URL %q: %v", issuerURL, err)
-		return nil, false
-	}
-
-	vwf := &verifierWithConfig{provider.Verifier(cfg), cfg}
-	if v == nil {
-		v = []*verifierWithConfig{vwf}
-	} else {
-		v = append(v, vwf)
-	}
-
-	fc.lru.Add(issuerURL, v)
-	return vwf.IDTokenVerifier, true
+	return result
 }
 
 type InsecureOIDCConfigOption func(opt *oidc.Config)
@@ -391,7 +441,7 @@ func (fc *FulcioConfig) insertVerifier(iss OIDCIssuer) error {
 		return err
 	}
 	cfg := &oidc.Config{ClientID: iss.ClientID}
-	fc.verifiers[iss.IssuerURL] = []*verifierWithConfig{{provider.Verifier(cfg), cfg}}
+	fc.verifiers[iss.IssuerURL] = append(fc.verifiers[iss.IssuerURL], &verifierWithConfig{provider.Verifier(cfg), cfg})
 	return nil
 }
 
