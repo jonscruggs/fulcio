@@ -1130,3 +1130,79 @@ type mockKeySet struct {
 func (m *mockKeySet) VerifySignature(_ context.Context, _ string) (payload []byte, err error) {
 	return nil, nil
 }
+
+func TestGetIssuerMultipleIssuersPerURL(t *testing.T) {
+	fc := &FulcioConfig{
+		OIDCIssuers: map[string]OIDCIssuer{
+			"issuer-app-a": {
+				IssuerURL: "https://accounts.example.com",
+				ClientID:  "app-a",
+				Type:      IssuerTypeEmail,
+			},
+			"issuer-app-b": {
+				IssuerURL: "https://accounts.example.com",
+				ClientID:  "app-b",
+				Type:      IssuerTypeEmail,
+			},
+		},
+	}
+
+	// With audience matching app-a
+	iss, ok := fc.GetIssuer("https://accounts.example.com", "app-a")
+	if !ok {
+		t.Fatal("expected to find issuer for app-a audience")
+	}
+	if iss.ClientID != "app-a" {
+		t.Errorf("expected ClientID app-a, got %s", iss.ClientID)
+	}
+
+	// With audience matching app-b
+	iss, ok = fc.GetIssuer("https://accounts.example.com", "app-b")
+	if !ok {
+		t.Fatal("expected to find issuer for app-b audience")
+	}
+	if iss.ClientID != "app-b" {
+		t.Errorf("expected ClientID app-b, got %s", iss.ClientID)
+	}
+
+	// With non-matching audience
+	_, ok = fc.GetIssuer("https://accounts.example.com", "unknown-app")
+	if ok {
+		t.Fatal("expected no match for unknown audience")
+	}
+
+	// With empty audience when multiple issuers exist
+	_, ok = fc.GetIssuer("https://accounts.example.com", "")
+	if ok {
+		t.Fatal("expected no match for empty audience when multiple issuers share the URL")
+	}
+}
+
+func TestGetIssuerSingleIssuerIgnoresAudience(t *testing.T) {
+	fc := &FulcioConfig{
+		OIDCIssuers: map[string]OIDCIssuer{
+			"single-issuer": {
+				IssuerURL: "https://accounts.example.com",
+				ClientID:  "my-app",
+				Type:      IssuerTypeEmail,
+			},
+		},
+	}
+
+	// Single issuer should match regardless of audience
+	iss, ok := fc.GetIssuer("https://accounts.example.com", "")
+	if !ok {
+		t.Fatal("expected single issuer to match with empty audience")
+	}
+	if iss.ClientID != "my-app" {
+		t.Errorf("expected ClientID my-app, got %s", iss.ClientID)
+	}
+
+	iss, ok = fc.GetIssuer("https://accounts.example.com", "different-aud")
+	if !ok {
+		t.Fatal("expected single issuer to match with any audience")
+	}
+	if iss.ClientID != "my-app" {
+		t.Errorf("expected ClientID my-app, got %s", iss.ClientID)
+	}
+}

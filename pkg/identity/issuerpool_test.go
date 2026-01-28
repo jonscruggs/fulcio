@@ -213,3 +213,41 @@ func TestExtractTokenClaims(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractTokenClaimsAudience(t *testing.T) {
+	header := `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9`
+	sig := `fakesig`
+
+	tests := map[string]struct {
+		Token            string
+		ExpectedAudience string
+	}{
+		`string aud claim`: {
+			// {"iss":"example.com","aud":"my-audience"}
+			Token:            header + `.eyJpc3MiOiJleGFtcGxlLmNvbSIsImF1ZCI6Im15LWF1ZGllbmNlIn0.` + sig,
+			ExpectedAudience: "my-audience",
+		},
+		`array aud claim`: {
+			// {"iss":"example.com","aud":["aud-one","aud-two"]}
+			Token:            header + `.eyJpc3MiOiJleGFtcGxlLmNvbSIsImF1ZCI6WyJhdWQtb25lIiwiYXVkLXR3byJdfQ.` + sig,
+			ExpectedAudience: "aud-one",
+		},
+		`no aud claim`: {
+			// {"iss":"example.com"} (the exampleToken from above)
+			Token:            `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJleGFtcGxlLmNvbSJ9.eBJFurm45FSlxt9c7r339xkQC7yqn2O9SlBldCFAQhk`,
+			ExpectedAudience: "",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			claims, err := extractTokenClaims(test.Token)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if claims.Audience != test.ExpectedAudience {
+				t.Errorf("expected audience %q, got %q", test.ExpectedAudience, claims.Audience)
+			}
+		})
+	}
+}

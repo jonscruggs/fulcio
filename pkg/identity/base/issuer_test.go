@@ -58,6 +58,76 @@ func TestMatch(t *testing.T) {
 	}
 }
 
+func TestMatchWithAudience(t *testing.T) {
+	tests := []struct {
+		description string
+		issuerURL   string
+		clientID    string
+		url         string
+		audience    string
+		expected    bool
+	}{
+		{
+			description: "clientID set, audience matches",
+			issuerURL:   "example.com",
+			clientID:    "my-app",
+			url:         "example.com",
+			audience:    "my-app",
+			expected:    true,
+		},
+		{
+			description: "clientID set, audience does not match",
+			issuerURL:   "example.com",
+			clientID:    "my-app",
+			url:         "example.com",
+			audience:    "other-app",
+			expected:    false,
+		},
+		{
+			description: "clientID set, empty audience",
+			issuerURL:   "example.com",
+			clientID:    "my-app",
+			url:         "example.com",
+			audience:    "",
+			expected:    false,
+		},
+		{
+			description: "no clientID, any audience matches",
+			issuerURL:   "example.com",
+			clientID:    "",
+			url:         "example.com",
+			audience:    "whatever",
+			expected:    true,
+		},
+		{
+			description: "meta issuer with clientID and matching audience",
+			issuerURL:   "wildcard.*.example.com",
+			clientID:    "my-app",
+			url:         "wildcard.hello.example.com",
+			audience:    "my-app",
+			expected:    true,
+		},
+		{
+			description: "meta issuer with clientID and non-matching audience",
+			issuerURL:   "wildcard.*.example.com",
+			clientID:    "my-app",
+			url:         "wildcard.hello.example.com",
+			audience:    "other-app",
+			expected:    false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.description, func(t *testing.T) {
+			base := Issuer(test.issuerURL, test.clientID)
+			matched := base.Match(context.Background(), test.url, test.audience)
+			if matched != test.expected {
+				t.Fatalf("expected %v got %v", test.expected, matched)
+			}
+		})
+	}
+}
+
 func TestAuthenticate(t *testing.T) {
 	issuer := Issuer("example.com", "")
 	if _, err := issuer.Authenticate(context.Background(), "token"); err == nil {
