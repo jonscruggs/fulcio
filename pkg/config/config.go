@@ -84,6 +84,9 @@ type FulcioConfig struct {
 	verifiers map[string][]*verifierWithConfig
 	// lru is an LRU cache of recently used verifiers for our meta issuers.
 	lru *lru.TwoQueueCache[string, []*verifierWithConfig]
+	// issuersByURL is a secondary index mapping IssuerURL to OIDCIssuer entries
+	// for O(1) lookup in GetIssuer, built during prepare().
+	issuersByURL map[string][]OIDCIssuer
 }
 
 type IssuerMetadata struct {
@@ -177,11 +180,16 @@ func FirstAudience(audience []string) string {
 // to disambiguate by matching against the issuer's ClientID.
 // If no matching configuration is found, then it returns `false`.
 func (fc *FulcioConfig) GetIssuer(issuerURL, audience string) (OIDCIssuer, bool) {
-	// Search OIDCIssuers by IssuerURL field (map key is now a logical name)
+	// Use the pre-built secondary index for O(1) lookup by IssuerURL.
+	// Fall back to linear scan if the index was not built (e.g. in tests).
 	var candidates []OIDCIssuer
-	for _, iss := range fc.OIDCIssuers {
-		if iss.IssuerURL == issuerURL {
-			candidates = append(candidates, iss)
+	if fc.issuersByURL != nil {
+		candidates = fc.issuersByURL[issuerURL]
+	} else {
+		for _, iss := range fc.OIDCIssuers {
+			if iss.IssuerURL == issuerURL {
+				candidates = append(candidates, iss)
+			}
 		}
 	}
 	if len(candidates) == 1 {
@@ -388,7 +396,9 @@ func httpClientForIssuer(fc *FulcioConfig, iss OIDCIssuer) (*http.Client, error)
 
 func (fc *FulcioConfig) prepare() error {
 	fc.verifiers = make(map[string][]*verifierWithConfig, len(fc.OIDCIssuers))
+	fc.issuersByURL = make(map[string][]OIDCIssuer, len(fc.OIDCIssuers))
 	for _, iss := range fc.OIDCIssuers {
+		fc.issuersByURL[iss.IssuerURL] = append(fc.issuersByURL[iss.IssuerURL], iss)
 		if err := fc.insertVerifier(iss); err != nil {
 			log.Logger.Errorf("error creating provider for issuer URL %q: %v", iss.IssuerURL, err)
 			continue
