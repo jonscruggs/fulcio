@@ -91,20 +91,6 @@ func TestIssuerPool(t *testing.T) {
 		badFormatToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.??.aW-Zyc3JTnqI0uqc1VzNY9_5BhmhXmUksGaFEiiZCHU`
 	)
 
-	// Two issuers matching the same URL, first rejects, second accepts.
-	// This tests the fallthrough behavior when multiple issuers share a URL.
-	rejectIfExampleCom := testIssuer{
-		match: func(_ context.Context, url string) bool {
-			return url == `example.com`
-		},
-		auth: func(context.Context, string) (Principal, error) {
-			return nil, errors.New("wrong issuer type")
-		},
-	}
-
-	// iss == example.com, aud == audience-b
-	exampleTokenWithAud := `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJleGFtcGxlLmNvbSIsImF1ZCI6ImF1ZGllbmNlLWIifQ.signature`
-
 	tests := map[string]struct {
 		Pool              IssuerPool
 		Token             string
@@ -151,17 +137,6 @@ func TestIssuerPool(t *testing.T) {
 		},
 		`match then reject all pool should never authenticate`: {
 			Pool:    IssuerPool{matchThenRejectAll},
-			Token:   exampleToken,
-			WantErr: true,
-		},
-		`same URL issuers should fallthrough to second on first failure`: {
-			Pool:              IssuerPool{rejectIfExampleCom, bobIfExampleCom},
-			Token:             exampleTokenWithAud,
-			ExpectedPrincipal: bob,
-			WantErr:           false,
-		},
-		`same URL issuers should fail if all matching issuers reject`: {
-			Pool:    IssuerPool{rejectIfExampleCom, matchThenRejectAll},
 			Token:   exampleToken,
 			WantErr: true,
 		},

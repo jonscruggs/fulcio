@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"github.com/sigstore/fulcio/pkg/config"
-	"github.com/sigstore/fulcio/pkg/log"
 )
 
 type IssuerPool []Issuer
@@ -30,27 +29,14 @@ type IssuerPool []Issuer
 func (p IssuerPool) Authenticate(ctx context.Context, token string, opts ...config.InsecureOIDCConfigOption) (Principal, error) {
 	claims, err := extractTokenClaims(token)
 	if err != nil {
-		log.Logger.Debugf("IssuerPool.Authenticate: failed to extract token claims: %v", err)
 		return nil, err
 	}
 
-	log.Logger.Debugf("IssuerPool.Authenticate: looking for issuer match for issuer=%q audience=%q among %d providers", claims.Issuer, claims.Audience, len(p))
-	var lastErr error
 	for _, issuer := range p {
 		if issuer.Match(ctx, claims.Issuer) {
-			log.Logger.Debugf("IssuerPool.Authenticate: matched issuer=%q, authenticating", claims.Issuer)
-			principal, err := issuer.Authenticate(ctx, token, opts...)
-			if err == nil {
-				return principal, nil
-			}
-			log.Logger.Debugf("IssuerPool.Authenticate: issuer=%q matched but authentication failed: %v, trying next", claims.Issuer, err)
-			lastErr = err
+			return issuer.Authenticate(ctx, token, opts...)
 		}
 	}
-	if lastErr != nil {
-		return nil, lastErr
-	}
-	log.Logger.Warnf("IssuerPool.Authenticate: no configured provider matched issuer=%q audience=%q", claims.Issuer, claims.Audience)
 	return nil, fmt.Errorf("failed to match issuer URL %s from token with any configured providers", claims.Issuer)
 }
 
@@ -79,23 +65,19 @@ func (tc *tokenClaims) parseAudience() {
 
 func extractTokenClaims(token string) (*tokenClaims, error) {
 	if strings.Count(token, ".") != 2 {
-		log.Logger.Debugf("extractTokenClaims: malformed jwt, expected 3 parts but got %d", strings.Count(token, ".")+1)
 		return nil, fmt.Errorf("oidc: malformed jwt, token must have 3 parts")
 	}
 
 	parts := strings.SplitN(token, ".", 3)
 	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		log.Logger.Debugf("extractTokenClaims: failed to base64-decode jwt payload: %v", err)
 		return nil, fmt.Errorf("oidc: malformed jwt payload: %w", err)
 	}
 
 	var claims tokenClaims
 	if err := json.Unmarshal(raw, &claims); err != nil {
-		log.Logger.Debugf("extractTokenClaims: failed to unmarshal jwt claims: %v", err)
 		return nil, fmt.Errorf("oidc: failed to unmarshal claims: %w", err)
 	}
 	claims.parseAudience()
-	log.Logger.Debugf("extractTokenClaims: parsed issuer=%q audience=%q", claims.Issuer, claims.Audience)
 	return &claims, nil
 }
